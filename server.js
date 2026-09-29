@@ -76,59 +76,23 @@ function parseGithubRepo(input) {
   return null;
 }
 
-function githubHeaders(githubToken) {
-  const headers = {
-    Accept: 'application/vnd.github+json',
-    'User-Agent': 'Aman-TechX',
-    'X-GitHub-Api-Version': '2022-11-28'
-  };
-  if (githubToken) headers.Authorization = `Bearer ${normalizeToken(githubToken)}`;
-  return headers;
-}
-
-async function resolveTarballUrl(owner, repo, githubToken) {
-  const auth = githubHeaders(githubToken);
-  let branches = ['main', 'master'];
-  try {
-    const info = await axios.get(`https://api.github.com/repos/${owner}/${repo}`, {
-      headers: auth,
-      timeout: 20000
-    });
-    if (info.data && info.data.default_branch) {
-      branches = [info.data.default_branch, ...branches.filter((b) => b !== info.data.default_branch)];
-    }
-  } catch (err) {
-    const status = err.response && err.response.status;
-    if (status === 404 && !githubToken) {
-      throw new Error('Repo not found or private. Add a GitHub token with repo access.');
-    }
-    if (status === 401 || status === 403) {
-      throw new Error('Invalid GitHub token. Create one at github.com/settings/tokens with repo scope.');
-    }
-  }
-
+async function resolveTarballUrl(owner, repo) {
+  const branches = ['main', 'master'];
   for (const branch of branches) {
-    const apiUrl = `https://api.github.com/repos/${owner}/${repo}/tarball/${encodeURIComponent(branch)}`;
+    const url = `https://github.com/${owner}/${repo}/archive/refs/heads/${branch}.tar.gz`;
     try {
-      const res = await axios.get(apiUrl, {
-        headers: auth,
-        timeout: 20000,
+      const res = await axios.head(url, {
+        timeout: 15000,
         maxRedirects: 5,
-        responseType: 'stream',
-        validateStatus: (s) => s < 400,
-        beforeRedirect: (options) => {
-          const host = options.hostname || options.host || '';
-          if (host && host !== 'api.github.com' && options.headers) {
-            delete options.headers.Authorization;
-            delete options.headers.authorization;
-          }
-        }
+        validateStatus: (s) => s < 400
       });
-      if (res.data && typeof res.data.destroy === 'function') res.data.destroy();
-      return { url: apiUrl, branch, githubToken };
+      if (res.status < 400) return { url, branch };
     } catch (_) {}
   }
-  throw new Error('Could not download GitHub repo. Check URL, token, and repo access.');
+  return {
+    url: `https://github.com/${owner}/${repo}/archive/refs/heads/main.tar.gz`,
+    branch: 'main'
+  };
 }
 
 function vercelClient(token, teamId) {
@@ -190,63 +154,28 @@ function walkFiles(dir, base) {
   return out;
 }
 
-const VERCEL_FRAMEWORKS = new Set([
-  'container', 'blitzjs', 'nextjs', 'gatsby', 'remix', 'react-router', 'astro',
-  'hexo', 'eleventy', 'docusaurus-2', 'docusaurus', 'preact', 'solidstart-1',
-  'solidstart', 'dojo', 'ember', 'vue', 'scully', 'ionic-angular', 'angular',
-  'polymer', 'svelte', 'sveltekit', 'sveltekit-1', 'ionic-react', 'create-react-app',
-  'gridsome', 'umijs', 'sapper', 'saber', 'stencil', 'nuxtjs', 'redwoodjs', 'hugo',
-  'jekyll', 'brunch', 'middleman', 'zola', 'hydrogen', 'vite', 'tanstack-start',
-  'tanstack-start-lovable', 'vitepress', 'vuepress', 'parcel', 'fastapi', 'flask',
-  'fasthtml', 'django', 'ash', 'factory-eve', 'eve', 'sanity', 'sanity-v2',
-  'storybook', 'nitro', 'hono', 'express', 'h3', 'koa', 'nestjs', 'elysia',
-  'fastify', 'xmcp', 'python', 'ruby', 'rust', 'axum', 'actix-web', 'bun',
-  'node', 'go', 'services', 'mastra', ''
-]);
-
 function detectFramework(rootDir) {
-  const has = (name) => fs.existsSync(path.join(rootDir, name));
-  let detected = '';
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf8'));
     const deps = Object.assign({}, pkg.dependencies || {}, pkg.devDependencies || {});
-    if (deps.next || has('next.config.js') || has('next.config.mjs') || has('next.config.ts')) detected = 'nextjs';
-    else if (deps.nuxt || deps['nuxt3'] || has('nuxt.config.js') || has('nuxt.config.ts')) detected = 'nuxtjs';
-    else if (deps['@sveltejs/kit'] || has('svelte.config.js')) detected = 'sveltekit';
-    else if (deps.astro || has('astro.config.mjs') || has('astro.config.js')) detected = 'astro';
-    else if (deps.gatsby) detected = 'gatsby';
-    else if (deps['@remix-run/dev'] || deps['@remix-run/node']) detected = 'remix';
-    else if (deps.express) detected = 'express';
-    else if (deps.fastify) detected = 'fastify';
-    else if (deps.koa) detected = 'koa';
-    else if (deps['@nestjs/core']) detected = 'nestjs';
-    else if (deps.hono) detected = 'hono';
-    else if (deps.vite && deps.vue) detected = 'vue';
-    else if (deps.vite && (deps.react || deps['react-dom'])) detected = 'vite';
-    else if (deps['react-scripts']) detected = 'create-react-app';
-    else detected = 'node';
-  } catch (_) {
-    if (has('requirements.txt') || has('pyproject.toml')) detected = 'python';
-    else if (has('go.mod')) detected = 'go';
-    else detected = 'node';
-  }
-  return VERCEL_FRAMEWORKS.has(detected) ? detected : 'node';
+    if (deps.next) return 'nextjs';
+    if (deps.nuxt || deps['nuxt3']) return 'nuxtjs';
+    if (deps['@sveltejs/kit']) return 'sveltekit';
+    if (deps.astro) return 'astro';
+    if (deps.vite && deps.vue) return 'vue';
+    if (deps.vite && (deps.react || deps['react-dom'])) return 'vite';
+    if (deps['react-scripts']) return 'create-react-app';
+    if (deps.gatsby) return 'gatsby';
+  } catch (_) {}
+  return null;
 }
 
-async function extractTarball(tarballUrl, destDir, githubToken) {
+async function extractTarball(tarballUrl, destDir) {
   await fsp.mkdir(destDir, { recursive: true });
   const res = await axios.get(tarballUrl, {
-    headers: githubHeaders(githubToken),
     responseType: 'stream',
     timeout: 120000,
-    maxRedirects: 5,
-    beforeRedirect: (options) => {
-      const host = options.hostname || options.host || '';
-      if (host && host !== 'api.github.com' && options.headers) {
-        delete options.headers.Authorization;
-        delete options.headers.authorization;
-      }
-    }
+    maxRedirects: 5
   });
   await new Promise((resolve, reject) => {
     res.data
@@ -309,29 +238,40 @@ async function uploadFilesAndDeploy(client, projectName, rootDir) {
     uploaded.push({ file: item.rel, sha: sha, size: buf.length });
   });
 
-  if (uploaded.length === 0) {
-    throw new Error('No uploadable files found in GitHub repository');
-  }
-
   const deployRes = await client.post('/v13/deployments', {
     name: projectName,
     files: uploaded,
     project: projectName,
     target: 'production',
-    projectSettings: {
-      framework: framework
-    }
-  }, {
-    params: Object.assign({}, client.defaults.params || {}, {
-      skipAutoDetectionConfirmation: '1'
-    })
+    projectSettings: framework ? { framework: framework } : undefined
   });
   return deployRes.data;
 }
 
-async function ensureProject(client, appName) {
+async function deployFromGit(client, projectName, owner, repo, branch) {
+  const deployRes = await client.post('/v13/deployments', {
+    name: projectName,
+    project: projectName,
+    target: 'production',
+    gitSource: {
+      type: 'github',
+      org: owner,
+      repo: repo,
+      ref: branch || 'main'
+    }
+  });
+  return deployRes.data;
+}
+
+async function ensureProject(client, appName, owner, repo) {
   try {
-    const created = await client.post('/v10/projects', { name: appName });
+    const created = await client.post('/v10/projects', {
+      name: appName,
+      gitRepository: {
+        type: 'github',
+        repo: `${owner}/${repo}`
+      }
+    });
     return created.data;
   } catch (err) {
     const status = err.response && err.response.status;
@@ -340,52 +280,21 @@ async function ensureProject(client, appName) {
       const existing = await client.get(`/v9/projects/${encodeURIComponent(appName)}`);
       return existing.data;
     }
+    if (status === 400 || status === 403 || /git/i.test(msg)) {
+      try {
+        const created = await client.post('/v10/projects', { name: appName });
+        return created.data;
+      } catch (err2) {
+        const status2 = err2.response && err2.response.status;
+        if (status2 === 409) {
+          const existing = await client.get(`/v9/projects/${encodeURIComponent(appName)}`);
+          return existing.data;
+        }
+        throw err2;
+      }
+    }
     throw err;
   }
-}
-
-async function waitForDeployment(client, deploy) {
-  const id = deploy && (deploy.id || deploy.uid);
-  if (!id) return deploy;
-  let last = deploy;
-  for (let i = 0; i < 90; i++) {
-    const state = last.readyState || last.status;
-    if (state === 'READY') return last;
-    if (state === 'ERROR' || state === 'CANCELED') {
-      throw new Error(last.errorMessage || last.errorCode || 'Vercel build failed');
-    }
-    await sleep(2000);
-    const res = await client.get(`/v13/deployments/${encodeURIComponent(id)}`);
-    last = res.data;
-  }
-  throw new Error('Deployment is still building. Open Vercel dashboard to check logs.');
-}
-
-async function getAppUrl(client, appName, deploy) {
-  try {
-    const proj = await client.get(`/v9/projects/${encodeURIComponent(appName)}`);
-    const aliases =
-      (proj.data && proj.data.targets && proj.data.targets.production && proj.data.targets.production.alias) || [];
-    if (aliases.length) return `https://${aliases[0]}`;
-    const prodUrl = proj.data && proj.data.targets && proj.data.targets.production && proj.data.targets.production.url;
-    if (prodUrl) return String(prodUrl).startsWith('http') ? prodUrl : `https://${prodUrl}`;
-  } catch (_) {}
-  try {
-    const dom = await client.get(`/v9/projects/${encodeURIComponent(appName)}/domains`);
-    const list = (dom.data && dom.data.domains) || [];
-    const first = list.find((d) => d && d.name) || null;
-    if (first) return `https://${first.name}`;
-  } catch (_) {}
-  return deploymentUrl(deploy, appName);
-}
-
-function projectWebUrl(item) {
-  const aliases =
-    (item.targets && item.targets.production && item.targets.production.alias) || [];
-  if (aliases.length) return `https://${aliases[0]}`;
-  const prodUrl = item.targets && item.targets.production && item.targets.production.url;
-  if (prodUrl) return String(prodUrl).startsWith('http') ? prodUrl : `https://${prodUrl}`;
-  return `https://${item.name}.vercel.app`;
 }
 
 async function setEnvVars(client, appName, vars) {
@@ -459,7 +368,6 @@ app.post('/venom/deploy-apps', async (req, res) => {
     githubRepo,
     vercelToken,
     herokuApiKey,
-    githubToken,
     appName: rawAppName,
     teamId
   } = req.body || {};
@@ -484,25 +392,27 @@ app.post('/venom/deploy-apps', async (req, res) => {
 
   let tarball;
   try {
-    tarball = await resolveTarballUrl(parsed.owner, parsed.repo, githubToken);
+    tarball = await resolveTarballUrl(parsed.owner, parsed.repo);
   } catch (err) {
-    return res.status(400).json({ error: vercelErrorMessage(err) || 'Could not access GitHub repository' });
+    return res.status(400).json({ error: 'Could not access GitHub repository' });
   }
 
   const tmpDir = path.join(os.tmpdir(), `aman-vercel-${appName}-${Date.now()}`);
   try {
-    await ensureProject(client, appName);
-    const envVars = {
+    await ensureProject(client, appName, parsed.owner, parsed.repo);
+    await setEnvVars(client, appName, {
       GITHUB_REPO: `https://github.com/${parsed.owner}/${parsed.repo}`
-    };
-    if (githubToken) envVars.GITHUB_TOKEN = normalizeToken(githubToken);
-    await setEnvVars(client, appName, envVars);
+    });
 
-    await extractTarball(tarball.url, tmpDir, githubToken);
-    let deploy = await uploadFilesAndDeploy(client, appName, tmpDir);
-    deploy = await waitForDeployment(client, deploy);
+    let deploy;
+    try {
+      deploy = await deployFromGit(client, appName, parsed.owner, parsed.repo, tarball.branch);
+    } catch (_) {
+      await extractTarball(tarball.url, tmpDir);
+      deploy = await uploadFilesAndDeploy(client, appName, tmpDir);
+    }
 
-    const appUrl = await getAppUrl(client, appName, deploy);
+    const appUrl = deploymentUrl(deploy, appName);
     return res.json({
       success: true,
       appName,
@@ -536,7 +446,13 @@ app.post('/api/manager/bot-apps', async (req, res) => {
       });
       const list = (response.data && response.data.projects) || [];
       list.forEach((item) => {
-        const webUrl = projectWebUrl(item);
+        const aliases = Array.isArray(item.alias)
+          ? item.alias.map((a) => (typeof a === 'string' ? a : a.domain)).filter(Boolean)
+          : [];
+        const custom = aliases.find((d) => d && !String(d).endsWith('.vercel.app'));
+        const webUrl = custom
+          ? `https://${custom}`
+          : `https://${item.name}.vercel.app`;
         apps.push({
           name: item.name,
           id: item.id,
@@ -544,7 +460,7 @@ app.post('/api/manager/bot-apps', async (req, res) => {
           created_at: item.createdAt ? new Date(item.createdAt).toISOString() : null,
           updated_at: item.updatedAt ? new Date(item.updatedAt).toISOString() : null,
           framework: item.framework || '',
-          domain: webUrl.replace(/^https?:\/\//, '')
+          domain: custom || `${item.name}.vercel.app`
         });
       });
       const pagination = response.data && response.data.pagination;
@@ -598,21 +514,8 @@ async function resolveGithubFromProject(client, appName, fallbackRepo) {
   return null;
 }
 
-async function githubTokenFromProject(client, appName, fallback) {
-  if (fallback) return normalizeToken(fallback);
-  try {
-    const envRes = await client.get(`/v9/projects/${encodeURIComponent(appName)}/env`, {
-      params: { decrypt: 'true' }
-    });
-    const envs = (envRes.data && envRes.data.envs) || [];
-    const found = envs.find((e) => e.key === 'GITHUB_TOKEN');
-    if (found && found.value) return String(found.value);
-  } catch (_) {}
-  return '';
-}
-
 app.post('/api/manager/restart-bot-apps', async (req, res) => {
-  const { vercelToken, herokuApiKey, appNames, githubRepo, githubToken, teamId } = req.body || {};
+  const { vercelToken, herokuApiKey, appNames, githubRepo, teamId } = req.body || {};
   const token = vercelToken || herokuApiKey;
   if (!token) {
     return res.status(400).json({ success: false, error: 'Vercel token required' });
@@ -633,11 +536,13 @@ app.post('/api/manager/restart-bot-apps', async (req, res) => {
       if (!parsed) {
         throw new Error('GitHub repository not linked. Set GITHUB_REPO or pass repo URL.');
       }
-      const ghToken = await githubTokenFromProject(client, name, githubToken);
-      const tarball = await resolveTarballUrl(parsed.owner, parsed.repo, ghToken);
-      await extractTarball(tarball.url, tmpDir, ghToken);
-      const deploy = await uploadFilesAndDeploy(client, name, tmpDir);
-      await waitForDeployment(client, deploy);
+      const tarball = await resolveTarballUrl(parsed.owner, parsed.repo);
+      try {
+        await deployFromGit(client, name, parsed.owner, parsed.repo, tarball.branch);
+      } catch (_) {
+        await extractTarball(tarball.url, tmpDir);
+        await uploadFilesAndDeploy(client, name, tmpDir);
+      }
       restarted += 1;
     } catch (err) {
       errors.push({
