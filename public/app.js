@@ -178,13 +178,10 @@ async function confirmRestart() {
   try {
     const githubEl = document.getElementById('githubRepo');
     const githubRepo = githubEl ? githubEl.value.trim() : '';
-    const ghTokEl = document.getElementById('manageGithubToken') || document.getElementById('githubToken');
-    const githubToken = ghTokEl ? ghTokEl.value.trim() : '';
     const response = await axios.post('/api/manager/restart-bot-apps', {
       vercelToken: apiKey,
       appNames: apps,
-      githubRepo: githubRepo,
-      githubToken: githubToken
+      githubRepo: githubRepo
     }, { timeout: 900000 });
     if (response.data.success) {
       showToast(response.data.message);
@@ -252,8 +249,6 @@ if (venomForm) {
 
     const githubRepo = document.getElementById('githubRepo').value.trim();
     const vercelToken = document.getElementById('venomApiKey').value.trim();
-    const githubTokenEl = document.getElementById('githubToken');
-    const githubToken = githubTokenEl ? githubTokenEl.value.trim() : '';
     const appName = document.getElementById('appName').value.trim();
 
     if (!githubRepo || !vercelToken || !appName) {
@@ -270,7 +265,6 @@ if (venomForm) {
       const response = await axios.post('/venom/deploy-apps', {
         githubRepo: githubRepo,
         vercelToken: vercelToken,
-        githubToken: githubToken,
         appName: appName
       }, { timeout: 900000 });
 
