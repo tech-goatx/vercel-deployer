@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
+  <title>Aman TechX | Manager</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <link rel="stylesheet" href="/styles.css?v=10">
+</head>
+<body>
+  <div class="bg-gradient"></div>
+  <div class="glow-orb orb-1"></div>
+  <div class="glow-orb orb-2"></div>
+
+  <div class="container">
+    <div class="card">
+      <a href="/" class="manager-text-btn" title="Back to Deploy">
+        <i class="fas fa-arrow-left"></i>
+        <span>Back</span>
+      </a>
+
+      <div class="header">
+        <div class="logo-container">
+          <div class="logo">
+            <img src="https://i.postimg.cc/63z9CfcQ/20260818-061012.jpg" alt="Aman TechX">
+          </div>
+        </div>
+        <div class="title-wrapper">
+          <h1 class="title">Aman TechX</h1>
+        </div>
+        <p class="subtitle">Manage Vercel Apps</p>
+      </div>
+
+      <div id="managerSection">
+        <div class="info-box">
+          <i class="fas fa-info-circle"></i>
+          <div class="info-box-text">
+            <strong>Vercel Token Required</strong>
+            <p>Apps load karo, GitHub push karo ya delete karo</p>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="label">
+            <i class="fas fa-key"></i> Vercel Token
+          </label>
+          <div class="input-wrapper">
+            <input type="password" id="apiKeyInput" class="input" placeholder="Enter Vercel token">
+            <i class="fas fa-key input-icon"></i>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="label">
+            <i class="fab fa-github"></i> GitHub Token
+          </label>
+          <div class="input-wrapper">
+            <input type="password" id="manageGithubToken" class="input" placeholder="For private repo push (optional)">
+            <i class="fas fa-lock input-icon"></i>
+          </div>
+        </div>
+
+        <button class="btn-deploy" id="loadAppsBtn" style="margin-top:0;">
+          <i class="fas fa-cloud-download-alt"></i> Load Apps
+        </button>
+
+        <div class="loading" id="loadingApps">
+          <div class="spinner"></div>
+          <p class="loading-text">Loading apps from Vercel...</p>
+        </div>
+
+        <div id="appsContainer" style="display:none;">
+          <div class="select-all-bar" id="selectAllBar">
+            <input type="checkbox" id="selectAllApps">
+            <label for="selectAllApps">Select All</label>
+            <div class="action-buttons">
+              <button class="btn-sm btn-warning" onclick="restartSelectedApps()"><i class="fas fa-sync-alt"></i> Push</button>
+              <button class="btn-sm btn-danger" onclick="deleteSelectedApps()"><i class="fas fa-trash"></i> Delete</button>
+            </div>
+          </div>
+          <div id="appsGrid" class="apps-grid"></div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p class="footer-text">&copy; 2026 <b>Aman TechX</b></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="restartModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title"><i class="fas fa-sync-alt"></i> Push GitHub Changes</h2>
+        <button class="close-modal" onclick="closeRestartModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-message">Latest GitHub code push karke redeploy karo <span id="restartCount" style="color:#c8c8c8;font-weight:600;">0</span> app(s)</p>
+        <button class="modal-btn" onclick="confirmRestart()"><i class="fas fa-sync-alt"></i> Confirm Push</button>
+        <button class="modal-btn modal-btn-secondary" onclick="closeRestartModal()"><i class="fas fa-times"></i> Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal" id="deleteModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title"><i class="fas fa-exclamation-triangle"></i> Delete Apps</h2>
+        <button class="close-modal" onclick="closeDeleteModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p class="modal-message">Delete <span id="deleteCount" style="color:#d0a0a0;font-weight:600;">0</span> app(s). This cannot be undone.</p>
+        <button class="modal-btn" onclick="confirmDelete()"><i class="fas fa-trash"></i> Confirm Delete</button>
+        <button class="modal-btn modal-btn-secondary" onclick="closeDeleteModal()"><i class="fas fa-times"></i> Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">
+    <i class="fas fa-check-circle"></i>
+    <span id="toastMessage">Operation completed</span>
+  </div>
+
+  <script src="/app.js?v=10"></script>
+</body>
+</html>
